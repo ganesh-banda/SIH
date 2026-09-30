@@ -468,5 +468,18 @@
     state.api=value;localStorage.setItem("tracepoint-api",value);
     $("settingsDialog").close();start();
   });
+  const hero = document.querySelector(".hero");
+  let pointerFrame = 0;
+  hero.addEventListener("pointermove", (event) => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (pointerFrame) cancelAnimationFrame(pointerFrame);
+    const x = event.clientX, y = event.clientY;
+    pointerFrame = requestAnimationFrame(() => {
+      const box = hero.getBoundingClientRect();
+      hero.style.setProperty("--pointer-x", (100 * (x - box.left) / box.width).toFixed(1) + "%");
+      hero.style.setProperty("--pointer-y", (100 * (y - box.top) / box.height).toFixed(1) + "%");
+      pointerFrame = 0;
+    });
+  });
   start();
 })();
