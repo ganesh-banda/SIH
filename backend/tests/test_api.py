@@ -1,4 +1,5 @@
 import json
+import polars as pl
 
 
 def test_health_degraded_without_geolite(client):
@@ -50,3 +51,20 @@ def test_analysis_endpoints_require_a_run(client):
 
 def test_analysis_runs_listing(client):
     assert client.get("/analysis/runs").json() == []
+
+
+def test_alert_sorting_uses_whitelisted_columns(client):
+    client.app.state.store.write_table("alerts", pl.DataFrame({
+        "alert_id": ["a", "b", "c"],
+        "wallet_id": ["wallet-a", "wallet-b", "wallet-c"],
+        "risk_score": [90.0, 70.0, 80.0],
+        "classification_probability": [0.9, 0.7, 0.8],
+        "anomaly_score": [0.1, 0.9, 0.3],
+        "graph_risk": [None, None, 0.5],
+        "patterns": ["[]", "[]", '[{"pattern":"equal_value_outputs"}]'],
+    }))
+    assert [item["alert_id"] for item in client.get("/alerts?sort=risk_desc").json()] == ["a", "c", "b"]
+    assert [item["alert_id"] for item in client.get("/alerts?sort=risk_asc").json()] == ["b", "c", "a"]
+    assert [item["alert_id"] for item in client.get("/alerts?sort=anomaly_desc").json()] == ["b", "c", "a"]
+    assert [item["alert_id"] for item in client.get("/alerts?has_pattern=true").json()] == ["c"]
+    assert client.get("/alerts?sort=unknown").status_code == 422

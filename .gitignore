@@ -6,3 +6,9 @@ Thumbs.db
 *.code-workspace
 .chrome-test/
 screenshot.png
+frontend/.browser-qa/
+frontend/.browser-e2e/
+frontend/.browser-results/
+frontend/qa-*.png
+__pycache__/
+.pytest_cache/

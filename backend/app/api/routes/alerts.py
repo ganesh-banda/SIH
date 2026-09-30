@@ -1,4 +1,5 @@
 """Ranked, locally persisted investigator alerts."""
+from typing import Literal
 from fastapi import APIRouter, Depends, Query
 from app.api.dependencies import get_store
 from app.api.query import rows, one, decode
@@ -11,6 +12,7 @@ router=APIRouter(prefix="/alerts",tags=["alerts"])
 def list_alerts(limit:int=Query(50,ge=1,le=500),offset:int=Query(0,ge=0),
                 search:str|None=Query(None,max_length=128),
                 has_pattern:bool=False,seed_linked:bool=False,
+                sort:Literal["risk_desc","risk_asc","model_desc","anomaly_desc"]="risk_desc",
                 store:DuckDBStore=Depends(get_store)):
     conditions=[]
     params=[]
@@ -20,8 +22,14 @@ def list_alerts(limit:int=Query(50,ge=1,le=500),offset:int=Query(0,ge=0),
     if has_pattern: conditions.append("patterns != '[]'")
     if seed_linked: conditions.append("graph_risk IS NOT NULL")
     where=" WHERE "+" AND ".join(conditions) if conditions else ""
+    order={
+        "risk_desc":"risk_score DESC",
+        "risk_asc":"risk_score ASC",
+        "model_desc":"classification_probability DESC",
+        "anomaly_desc":"anomaly_score DESC",
+    }[sort]
     return [decode(r,"patterns","model_evidence","graph_evidence","related_transactions") for r in
-            rows(store,"SELECT * FROM alerts"+where+" ORDER BY risk_score DESC,wallet_id LIMIT ? OFFSET ?",params+[limit,offset])]
+            rows(store,"SELECT * FROM alerts"+where+" ORDER BY "+order+",wallet_id LIMIT ? OFFSET ?",params+[limit,offset])]
 
 
 @router.get("/{alert_id}")
