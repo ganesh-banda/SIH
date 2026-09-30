@@ -1,0 +1,12 @@
+{
+  "records_received": 20844,
+  "valid_records": 20844,
+  "invalid_records": 0,
+  "duplicate_records": 0,
+  "duplicate_txid_values": 0,
+  "missing_by_field": {},
+  "invalid_ips": 0,
+  "non_public_ips": 0,
+  "issue_counts": {},
+  "severity_counts": {}
+}

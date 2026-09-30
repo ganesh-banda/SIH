@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="340" viewBox="0 0 440 340">
+<rect width="440" height="340" fill="white"/>
+<text x="220" y="35" text-anchor="middle" font-size="20" font-family="Arial">xgboost — test confusion matrix</text>
+<text x="275" y="75" text-anchor="middle" font-size="14" font-family="Arial">Predicted licit / illicit</text>
+<text x="70" y="145" font-size="14" font-family="Arial">Actual licit</text>
+<text x="65" y="245" font-size="14" font-family="Arial">Actual illicit</text>
+<rect x="150" y="90" width="120" height="90" fill="rgb(105,110,250)" stroke="#51617a"/><text x="210" y="143" text-anchor="middle" font-size="25" fill="#17243a">3897</text><rect x="280" y="90" width="120" height="90" fill="rgb(241,246,250)" stroke="#51617a"/><text x="340" y="143" text-anchor="middle" font-size="25" fill="#17243a">116</text><rect x="150" y="190" width="120" height="90" fill="rgb(242,247,250)" stroke="#51617a"/><text x="210" y="243" text-anchor="middle" font-size="25" fill="#17243a">78</text><rect x="280" y="190" width="120" height="90" fill="rgb(242,247,250)" stroke="#51617a"/><text x="340" y="243" text-anchor="middle" font-size="25" fill="#17243a">78</text>
+<text x="220" y="317" text-anchor="middle" font-size="12" font-family="Arial">Chronological held-out test; rows actual, columns predicted</text>
+</svg>

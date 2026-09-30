@@ -1,0 +1,18 @@
+*.parquet binary
+*.duckdb binary
+*.joblib binary
+*.mmdb binary
+*.png binary
+*.zip binary
+
+# Keep source and documentation line endings consistent.
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+
+# Preserve the supplied dataset byte-for-byte across operating systems.
+backend/data/raw/* -text
+backend/data/geolite/*.csv -text

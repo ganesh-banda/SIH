@@ -1,0 +1,17 @@
+# Local Python installation and caches
+env/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Machine-specific config and runtime logs
+.env
+logs/*
+!logs/.gitkeep
+*.duckdb.wal
+*.tmp
+
+# Licensed local databases must be obtained separately
+*.mmdb

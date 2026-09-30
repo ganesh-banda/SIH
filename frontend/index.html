@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101922">
+  <title>Tracepoint — Bitcoin Risk Intelligence</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#overview" aria-label="Tracepoint home">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 38 38"><path d="M6 19h8l5-10 5 20 5-10h3"/><circle cx="19" cy="19" r="16"/></svg></span>
+        <span><strong>TRACEPOINT</strong><small>BITCOIN RISK INTELLIGENCE</small></span>
+      </a>
+      <div class="topbar-right">
+        <span class="pill pill-muted">SYNTHETIC DATASET</span>
+        <span id="connection" class="pill pill-wait"><span class="status-dot"></span>Connecting</span>
+        <button id="settingsButton" class="icon-button" type="button" aria-label="API settings" title="API settings">⚙</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <div class="side-section-label">WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        <a class="side-link active" href="#overview"><span class="nav-symbol">▦</span>Overview</a>
+        <a class="side-link" href="#investigation"><span class="nav-symbol">◇</span>Investigations</a>
+        <a class="side-link" href="#method"><span class="nav-symbol">≋</span>Method & limits</a>
+      </nav>
+      <div class="side-divider"></div>
+      <div class="side-section-label">DATA STATUS</div>
+      <div class="source-card">
+        <span class="source-icon">◎</span>
+        <div><strong>Observed traffic</strong><small>20,844 synthetic transactions</small></div>
+      </div>
+      <div class="source-card">
+        <span class="source-icon">◌</span>
+        <div><strong>Geo enrichment</strong><small id="geoSideStatus">Checking source…</small></div>
+      </div>
+      <div class="sidebar-note">
+        <span class="note-key">INVESTIGATOR NOTE</span>
+        <p>Scores prioritize review. They do not establish identity, ownership, or criminal conduct.</p>
+      </div>
+    </aside>
+
+    <main>
+      <section id="overview" class="overview">
+        <div class="eyebrow"><span class="eyebrow-line"></span> INTELLIGENCE WORKSPACE <span class="eyebrow-date">OFFLINE ANALYSIS • SYNTHETIC SAMPLE</span></div>
+        <div class="hero-row">
+          <div>
+            <h1>Follow the <em>evidence.</em></h1>
+            <p class="hero-copy">Explore model alerts, transaction relationships, and the exact evidence behind each review priority.</p>
+          </div>
+          <button id="featuredButton" class="primary-button" type="button">Open featured case <span aria-hidden="true">↗</span></button>
+        </div>
+        <div class="metric-grid" aria-label="Dataset metrics">
+          <article class="metric-card"><span>TRANSACTIONS ANALYZED</span><strong id="metricTransactions">—</strong><small>Observed Bitcoin traffic</small><i class="metric-glow glow-teal"></i></article>
+          <article class="metric-card"><span>ADDRESSES MAPPED</span><strong id="metricWallets">—</strong><small>Input and output addresses</small><i class="metric-glow glow-blue"></i></article>
+          <article class="metric-card"><span>REVIEW ALERTS</span><strong id="metricAlerts">—</strong><small>Above validation-set threshold</small><i class="metric-glow glow-amber"></i></article>
+          <article class="metric-card"><span>TEST PR-AUC</span><strong id="metricPrAuc">—</strong><small>XGBoost • held-out period</small><i class="metric-glow glow-purple"></i></article>
+        </div>
+      </section>
+
+      <section id="investigation" class="investigation">
+        <div class="section-heading"><div><div class="eyebrow small">ACTIVE WORKSPACE</div><h2>Investigations</h2></div><span class="section-meta">Every alert is linked to observed transactions</span></div>
+        <div class="work-grid">
+          <section class="queue panel" aria-label="Alert queue">
+            <div class="panel-heading"><div><span class="eyebrow small">01 / TRIAGE</span><h3>Review queue</h3></div><span class="queue-count" id="queueCount">—</span></div>
+            <label class="searchbox"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search address…" autocomplete="off" aria-label="Search addresses"></label>
+            <div class="filter-row" role="group" aria-label="Alert filters">
+              <button class="filter active" data-filter="all" type="button">All</button>
+              <button class="filter" data-filter="patterns" type="button">Patterns</button>
+              <button class="filter" data-filter="seed" type="button">Seed linked</button>
+            </div>
+            <div id="alertList" class="alert-list" aria-live="polite"><div class="queue-placeholder">Loading alerts…</div></div>
+            <div class="queue-footer"><span id="queuePageLabel">Sorted by review score</span><button id="loadMoreButton" type="button" class="text-button">Load more ↓</button></div>
+          </section>
+
+          <section class="case panel" aria-label="Selected investigation">
+            <div id="caseEmpty" class="case-empty"><span class="empty-symbol">◇</span><h3>Choose a case</h3><p>Select an address from the review queue to inspect its transactions, graph context, and model evidence.</p></div>
+            <div id="caseContent" hidden>
+              <div class="case-top">
+                <div><span class="eyebrow small">02 / INVESTIGATE</span><div class="case-title-row"><h3>Address profile</h3><span id="caseCategory" class="risk-tag">—</span></div></div>
+                <span id="caseAlertId" class="mono case-id"></span>
+              </div>
+              <div class="case-identity"><span class="identity-label">BITCOIN ADDRESS</span><button id="copyAddress" type="button" class="address-button mono" title="Copy address"></button></div>
+              <div class="case-score-row">
+                <div class="score-dial"><span id="scoreValue">—</span><small>REVIEW SCORE</small></div>
+                <div class="score-copy"><strong>Review priority from observed spending</strong><p id="scoreMethod">The score uses the highest model probability among this address’s observed spending transactions.</p></div>
+              </div>
+              <div class="signal-grid">
+                <div><span>MODEL SIGNAL</span><strong id="modelSignal">—</strong><small>Transaction probability</small></div>
+                <div><span>ANOMALY</span><strong id="anomalySignal">—</strong><small>Separate, not a probability</small></div>
+                <div><span>SEED CONTEXT</span><strong id="graphSignal">—</strong><small>Graph proximity only</small></div>
+              </div>
+              <div class="case-block" id="narrativeBlock"><div class="block-heading"><span>↗</span><h4>Evidence summary</h4></div><p id="caseExplanation"></p></div>
+              <div class="case-block"><div class="block-heading"><span>✣</span><h4>Model contributors</h4><small>SHAP values in model log-odds</small></div><div id="shapList" class="shap-list"></div></div>
+              <div class="case-block"><div class="block-heading"><span>◇</span><h4>Transaction neighborhood</h4><small id="graphMeta"></small></div><div class="graph-wrap"><svg id="graphSvg" role="img" aria-label="Address and transaction relationship graph" viewBox="0 0 760 330"></svg></div><div class="graph-legend"><span><i class="legend-dot wallet-dot"></i> Address</span><span><i class="legend-dot tx-dot"></i> Transaction</span><span>Direction follows funds</span></div></div>
+              <div class="case-columns">
+                <div class="case-block"><div class="block-heading"><span>▧</span><h4>Observed patterns</h4></div><div id="patternList"></div></div>
+                <div class="case-block"><div class="block-heading"><span>◎</span><h4>Network context</h4></div><div id="networkContext"></div></div>
+              </div>
+              <div class="case-block transaction-block"><div class="block-heading"><span>≡</span><h4>Relevant transactions</h4></div><div id="transactionList"></div></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="method" class="method-section">
+        <div class="section-heading"><div><div class="eyebrow small">READ THE SIGNAL CORRECTLY</div><h2>Method & boundaries</h2></div></div>
+        <div class="method-grid">
+          <article><span class="method-num">01</span><h3>Model detects</h3><p>XGBoost scores each observed transaction using its contents. This address inherits the highest score from transactions it spends.</p></article>
+          <article><span class="method-num">02</span><h3>Graph adds context</h3><p>Address–transaction links reveal fund flow. Distance to a supplied seed is shown separately and does not prove wrongdoing.</p></article>
+          <article><span class="method-num">03</span><h3>Evidence explains</h3><p>SHAP describes model contributions in log-odds. Patterns show measured structures; equal outputs alone are not suspicious activity.</p></article>
+          <article><span class="method-num">04</span><h3>Know the limits</h3><p>This is a synthetic dataset. Test illicit precision was <span id="methodPrecision">—</span> and recall <span id="methodRecall">—</span>. Synthetic city and ASN values are test fixtures.</p></article>
+        </div>
+      </section>
+      <footer>TRACEPOINT <span>·</span> Offline research prototype <span>·</span> Synthetic data <span>·</span> Human review required</footer>
+    </main>
+  </div>
+  <dialog id="settingsDialog" class="settings-dialog"><form method="dialog"><div class="dialog-top"><h2>API connection</h2><button type="submit" aria-label="Close">×</button></div><p>The frontend reads your local FastAPI server. No external service is used.</p><label for="apiUrl">Backend URL</label><input id="apiUrl" type="url" spellcheck="false" value="http://127.0.0.1:8000"><div class="dialog-actions"><button id="saveApi" class="primary-button" type="button">Save & reconnect</button></div></form></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

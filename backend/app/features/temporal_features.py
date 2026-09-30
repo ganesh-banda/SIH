@@ -1,0 +1,15 @@
+"""Timing features (receipt-to-spend delay, bursts, rapid forwarding, ...)
+
+TODO(dataset): implement as a FeatureGroup once the official dataset is
+mapped. Only features the real data genuinely supports will be added.
+"""
+
+from __future__ import annotations
+
+import polars as pl
+
+from app.features.base import FeatureContext
+
+
+def compute(ctx: FeatureContext) -> pl.DataFrame:
+    raise NotImplementedError("Pending dataset: temporal_features")

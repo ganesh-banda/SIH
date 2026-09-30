@@ -1,0 +1,11 @@
+{
+  "fields": {
+    "timestamp": "timestamp", "txid": "txid", "src_ip": "src_ip", "dst_ip": "dst_ip",
+    "src_port": "src_port", "dst_port": "dst_port", "input_addresses": "input_addresses",
+    "output_addresses": "output_addresses", "input_amounts": "input_amounts",
+    "output_amounts": "output_amounts", "fee": "fee", "script_type": "script_type",
+    "dataset_geo_country": "geo_country", "dataset_asn": null
+  },
+  "required_fields": ["timestamp", "txid", "input_addresses", "output_addresses", "input_amounts", "output_amounts"],
+  "list_delimiter": "|", "timestamp_unit": null, "naive_timestamps_are_utc": true
+}

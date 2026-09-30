@@ -1,0 +1,24 @@
+{
+  "_comment": "Copy to config/schema_mapping.json AFTER inspecting the official dataset. Map each canonical field to the raw column name that holds it, or null if the dataset does not have it. Unmapped raw columns (e.g. labels) are kept untouched.",
+  "fields": {
+    "timestamp": null,
+    "src_ip": null,
+    "dst_ip": null,
+    "src_port": null,
+    "dst_port": null,
+    "txid": null,
+    "input_addresses": null,
+    "output_addresses": null,
+    "input_amounts": null,
+    "output_amounts": null,
+    "fee": null,
+    "script_type": null,
+    "dataset_geo_country": null,
+    "dataset_asn": null
+  },
+  "required_fields": [],
+  "list_delimiter": null,
+  "timestamp_unit": null,
+  "naive_timestamps_are_utc": true,
+  "xml_record_tag": null
+}

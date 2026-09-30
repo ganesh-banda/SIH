@@ -1,0 +1,8 @@
+# Local environment and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace
+.chrome-test/
+screenshot.png
