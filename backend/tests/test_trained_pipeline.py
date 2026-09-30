@@ -1,10 +1,15 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from app.models.train import FEATURES, make_features
-from app.models.model_loader import load_trained_bundle
+from app.models.anomaly_model import anomaly_scores, train_isolation_forest
+from app.models.base import ModelMetadata
+from app.models.evaluate import evaluate
+from app.models.model_loader import list_model_metadata, load_trained_bundle
+from app.models.xgboost_model import predict_proba, train_xgboost
 from app.patterns.transaction_patterns import detect_transaction
 from app.risk.risk_engine import RiskEngine, RiskSignals, SupervisedOnlyStrategy
 from app.risk.risk_config import RiskConfig
@@ -31,6 +36,54 @@ def test_saved_models_load_if_analysis_has_run():
     bundle=load_trained_bundle(directory)
     assert bundle["schema"]["features"]==FEATURES
     assert bundle["classifier"].n_features_in_==len(FEATURES)
+    backend=directory.parent
+    features=pd.read_parquet(backend/"data/features/ml_features.parquet").head(12)
+    predictions=pd.read_parquet(backend/"data/results/predictions.parquet")
+    saved=predictions.set_index("txid").loc[features.txid]
+    transformed=bundle["imputer"].transform(features[FEATURES])
+    np.testing.assert_allclose(predict_proba(bundle["classifier"],transformed),
+                               saved.classification_probability,rtol=1e-6)
+    np.testing.assert_allclose(bundle["baseline"].predict_proba(transformed)[:,1],
+                               saved.baseline_probability,rtol=1e-6)
+    np.testing.assert_allclose(anomaly_scores(bundle["isolation_forest"],transformed),
+                               saved.anomaly_raw,rtol=1e-6)
+
+
+def test_model_helpers_fit_score_and_evaluate(tmp_path):
+    rng=np.random.default_rng(42)
+    labels=np.array([0,1]*40)
+    features=rng.normal(size=(80,4))+labels[:,None]*.6
+    classifier=train_xgboost(features[:60],labels[:60],features[60:],labels[60:])
+    probabilities=predict_proba(classifier,features[60:])
+    assert probabilities.shape==(20,)
+    assert np.all((probabilities>=0)&(probabilities<=1))
+    report=evaluate(labels[60:],probabilities,.5)
+    assert len(report["confusion_matrix"])==2
+    assert 0<=report["pr_auc"]<=1
+    anomaly=train_isolation_forest(features[:60])
+    assert np.isfinite(anomaly_scores(anomaly,features[60:])).all()
+    with pytest.raises(ValueError,match="features do not match"):
+        predict_proba(classifier,features[60:,:2])
+    with pytest.raises(ValueError,match="features do not match"):
+        anomaly_scores(anomaly,features[60:,:2])
+    with pytest.raises(ValueError,match="both binary classes"):
+        train_xgboost(features[:4],np.zeros(4))
+    with pytest.raises(ValueError,match="both binary classes"):
+        evaluate(np.zeros(4),np.zeros(4),.5)
+    with pytest.raises(FileNotFoundError,match="Missing trained model artifacts"):
+        load_trained_bundle(tmp_path)
+
+
+def test_optional_model_metadata_round_trip(tmp_path):
+    metadata=ModelMetadata(
+        name="tiny",model_type="xgboost",version="1",trained_at="2024-06-01T00:00:00Z",
+        feature_names=["a","b"],dataset_sha256="abc",training_config={"seed":42},
+    )
+    path=tmp_path/"tiny.meta.json"
+    metadata.save(path)
+    assert ModelMetadata.load(path)==metadata
+    (tmp_path/"broken.meta.json").write_text("{invalid",encoding="utf-8")
+    assert list_model_metadata(tmp_path)==[metadata]
 
 
 def test_supervised_risk_keeps_other_signals_separate():

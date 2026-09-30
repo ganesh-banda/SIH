@@ -1,8 +1,8 @@
-"""Model metadata, persisted next to every trained model.
+"""Optional per-model metadata.
 
-Every model saved to ``models/`` gets a ``<name>.meta.json`` recording what
-it was trained on and how, so any score can be traced to an exact model,
-feature list and dataset hash.
+The current training pipeline stores shared feature and provenance details in
+``models/feature_schema.json``. This class supports more detailed sidecars
+without implying that they already exist for every saved artifact.
 """
 
 from __future__ import annotations

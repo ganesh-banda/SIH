@@ -1,5 +1,6 @@
 # Local Python installation and caches
 env/
+.model-validation/
 .venv/
 venv/
 __pycache__/

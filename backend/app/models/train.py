@@ -12,15 +12,16 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import polars as pl
-from sklearn.ensemble import IsolationForest
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, classification_report, confusion_matrix, f1_score, roc_auc_score
+from sklearn.metrics import average_precision_score, f1_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from xgboost import XGBClassifier
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+from app.models.anomaly_model import anomaly_scores, train_isolation_forest
+from app.models.evaluate import evaluate
+from app.models.xgboost_model import predict_proba, train_xgboost
 from app.graph.graph_builder import build_graph
 from app.ingestion.loader import load_dataset
 from app.ingestion.schema_mapping import SchemaMapping
@@ -57,26 +58,18 @@ def make_features(tx: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def metrics(y, p, threshold):
-    pred = (p >= threshold).astype(int)
-    return {"threshold": float(threshold), "roc_auc": float(roc_auc_score(y, p)),
-            "pr_auc": float(average_precision_score(y, p)),
-            "confusion_matrix": confusion_matrix(y, pred, labels=[0, 1]).tolist(),
-            "classification_report": classification_report(y, pred, labels=[0, 1],
-                target_names=["licit", "illicit"], output_dict=True, zero_division=0)}
-
-
 def _save(con, name, frame, directory):
     path = directory / f"{name}.parquet"
     frame.to_parquet(path, index=False)
     con.execute(f'CREATE OR REPLACE TABLE "{name}" AS SELECT * FROM read_parquet(?)', [str(path)])
 
 
-def main() -> None:
-    s = get_settings()
+def main(settings: Settings | None = None, reports_dir: Path | None = None) -> None:
+    """Train and persist results; optional paths isolate validation runs."""
+    s = settings or get_settings()
     s.ensure_directories()
-    reports = ROOT / "reports"
-    reports.mkdir(exist_ok=True)
+    reports = reports_dir or ROOT / "reports"
+    reports.mkdir(parents=True,exist_ok=True)
     raw = s.raw_dir / "btc_tx_traffic.csv"
     ingested = load_dataset(raw)
     geo = geo_service_for_settings(s)
@@ -97,7 +90,8 @@ def main() -> None:
         tx[col] = pd.to_numeric(tx[col], errors="coerce")
     tx = tx.sort_values(["timestamp", "txid"]).reset_index(drop=True)
     labels = pd.read_csv(s.raw_dir / "labels_transactions.csv", usecols=["txid", "label"])
-    assert labels.txid.is_unique and tx.txid.is_unique
+    if not labels.txid.is_unique or not tx.txid.is_unique:
+        raise ValueError("Transaction IDs must be unique in labels and valid traffic")
     tx = tx.merge(labels, on="txid", how="left", validate="one_to_one")
     if tx.label.isna().any():
         raise ValueError("Missing labels for valid transactions")
@@ -111,28 +105,25 @@ def main() -> None:
     imp = SimpleImputer(strategy="median").fit(X.loc[train])
     Xi = imp.transform(X)
     joblib.dump(imp, s.models_dir / "preprocessing_pipeline.joblib")
-    xgb = XGBClassifier(n_estimators=180, max_depth=4, learning_rate=.05,
-        subsample=.85, colsample_bytree=.85, objective="binary:logistic",
-        eval_metric="logloss", random_state=SEED, n_jobs=4,
-        scale_pos_weight=float((1-y[train]).sum()/y[train].sum()))
-    xgb.fit(Xi[train], y[train], eval_set=[(Xi[val], y[val])], verbose=False)
+    xgb = train_xgboost(Xi[train], y[train], Xi[val], y[val], random_state=SEED)
     xgb.save_model(s.models_dir / "xgboost_model.json")
     base = make_pipeline(StandardScaler(), LogisticRegression(class_weight="balanced",
                                                                max_iter=1000, random_state=SEED))
     base.fit(Xi[train], y[train])
     joblib.dump(base, s.models_dir / "logistic_baseline.joblib")
-    iso = IsolationForest(n_estimators=150, max_samples=1024, contamination="auto",
-                          random_state=SEED, n_jobs=4).fit(Xi[train])
+    iso = train_isolation_forest(Xi[train], random_state=SEED)
     joblib.dump(iso, s.models_dir / "isolation_forest.joblib")
-    p, bp = xgb.predict_proba(Xi)[:,1], base.predict_proba(Xi)[:,1]
+    p, bp = predict_proba(xgb, Xi), base.predict_proba(Xi)[:,1]
     candidates = np.unique(np.quantile(p[val], np.linspace(.01,.99,99)))
     threshold = float(max(candidates, key=lambda t:f1_score(y[val],p[val]>=t,zero_division=0)))
     medium = float(min(np.quantile(p[val],.90), threshold/2))
-    raw_anomaly = -iso.score_samples(Xi)
+    raw_anomaly = anomaly_scores(iso, Xi)
     low,high = np.quantile(raw_anomaly[train],[.01,.99])
+    if high <= low:
+        raise ValueError("Training anomaly scores have no spread for normalization")
     anomaly = np.clip((raw_anomaly-low)/(high-low),0,1)
-    evals = {"xgboost":{k:metrics(y[m],p[m],threshold) for k,m in (("validation",val),("test",test))},
-             "logistic_baseline":{k:metrics(y[m],bp[m],.5) for k,m in (("validation",val),("test",test))},
+    evals = {"xgboost":{k:evaluate(y[m],p[m],threshold) for k,m in (("validation",val),("test",test))},
+             "logistic_baseline":{k:evaluate(y[m],bp[m],.5) for k,m in (("validation",val),("test",test))},
              "isolation_forest":{"test_pr_auc_descriptive":float(average_precision_score(y[test],anomaly[test])),
                                  "test_mean_score":float(anomaly[test].mean())}}
     (reports/"model_evaluation.md").write_text("# Held-out evaluation\n\nChronological 60/20/20 split. Threshold selected on validation F1 only. Repeated actors may cross periods; this tests later activity, not unseen actors. Full graph and labels are excluded from model inputs.\n\n```json\n"+json.dumps(evals,indent=2)+"\n```\n",encoding="utf-8")
