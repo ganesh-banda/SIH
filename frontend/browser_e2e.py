@@ -82,8 +82,17 @@ async def run(port: int):
         await browser.wait_for('document.querySelector("#connection")?.classList.contains("online")', "API connection")
         await browser.wait_for('document.querySelectorAll("#alertList tr[data-alert]").length > 0', "ranked alerts")
         assert await browser.evaluate('document.querySelector("#metricTransactions").textContent') != "—"
+        await browser.evaluate('new Promise(resolve => setTimeout(resolve, 650))')
+        await browser.evaluate('document.querySelector("#analyticsMode [data-mode=anomaly]").click()')
+        await browser.wait_for('document.querySelector("#analyticsLegend").textContent.includes("anomaly")', "analytics toggle")
+        assert await browser.evaluate('document.querySelectorAll("#analyticsChart .chart-column").length') > 0
+        await browser.evaluate('document.querySelector("#analyticsMode [data-mode=risk]").click()')
+        await browser.evaluate('new Promise(resolve => setTimeout(resolve, 650))')
+        await browser.evaluate('document.querySelector("#systemButton").click()')
+        assert await browser.evaluate('!document.querySelector("#systemMenu").hidden')
+        await browser.evaluate('document.querySelector("#systemButton").click()')
         await browser.screenshot("desktop-hero.png")
-        print("PASS dashboard, real API connection, ranked alerts")
+        print("PASS dashboard, real API connection, analytics toggle, system status, ranked alerts")
 
         await browser.evaluate('document.querySelector("#featuredButton").click()')
         await browser.wait_for('!document.querySelector("#caseContent").hidden', "featured case")
@@ -92,6 +101,9 @@ async def run(port: int):
         assert await browser.evaluate('document.querySelectorAll("#transactionList [data-tx]").length') > 0
         assert await browser.evaluate('document.querySelector("#caseExplanation").textContent.length') > 20
         assert await browser.evaluate('document.querySelectorAll("#shapList .shap-row").length') > 0
+        await browser.evaluate('document.querySelector("#geoLocationToggle").click()')
+        assert await browser.evaluate('document.querySelector("#networkContext").textContent.includes("Dataset country")')
+        await browser.evaluate('document.querySelector("#geoNetworkToggle").click()')
         await browser.evaluate('window.scrollTo({top: document.querySelector("#caseContent").getBoundingClientRect().top + scrollY - 95, behavior: "instant"})')
         await browser.evaluate('new Promise(resolve => setTimeout(resolve, 150))')
         await browser.screenshot("desktop-workspace.png")
@@ -107,7 +119,10 @@ async def run(port: int):
         await browser.evaluate('document.querySelector("#closeTransaction").click()')
         await browser.evaluate("""document.querySelector('#graphViewport [data-node^="tx:"]').dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true}))""")
         await browser.wait_for('!document.querySelector("#transactionDetail").hidden', "keyboard graph node selection")
-        print("PASS interactive graph zoom")
+        await browser.evaluate('document.querySelector("[data-page-target=graph]").click()')
+        assert await browser.evaluate('!document.querySelector("#graphPage").hidden')
+        await browser.evaluate('document.querySelector("#tabInvestigation").click()')
+        print("PASS interactive graph zoom, graph page navigation, Geo/IP toggles")
 
         await browser.evaluate("""(() => {
           const field=document.querySelector("#lookupInput");
@@ -169,7 +184,7 @@ async def run(port: int):
         await browser.wait_for('document.querySelector("#connection").classList.contains("online")', "backend recovery")
         print("PASS backend failure and reconnect")
 
-        for width in (1440, 1024, 768, 390):
+        for width in (1920, 1440, 1024, 768, 390):
             await browser.call("Emulation.setDeviceMetricsOverride", {
                 "width": width, "height": 900, "deviceScaleFactor": 1, "mobile": False
             })

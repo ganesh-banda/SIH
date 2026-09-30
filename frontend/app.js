@@ -6,7 +6,8 @@
     api: localStorage.getItem("tracepoint-api") || base,
     alerts: [], offset: 0, limit: 40, more: true, filter: "all", search: "", sort: "risk_desc",
     alertRequest: 0, caseRequest: 0, transactionRequest: 0,
-    wallet: null, graph: null, graphScale: 1, graphX: 0, graphY: 0, drag: null
+    wallet: null, graph: null, graphScale: 1, graphX: 0, graphY: 0, drag: null,
+    page: "overview", analyticsMode: "risk", currentTransaction: null, geoMode: "network"
   };
   const number = (value, digits = 0) => value == null || !Number.isFinite(Number(value))
     ? "—" : Number(value).toLocaleString(undefined, {minimumFractionDigits: digits, maximumFractionDigits: digits});
@@ -53,16 +54,36 @@
     const el = $("connection");
     el.className = "connection " + (online ? "online" : "offline");
     el.innerHTML = "<i></i>" + (online ? "api connected" : "api offline");
+    $("systemBackend").textContent = online ? "Connected" : "Unavailable";
+  }
+  function positionNavIndicator(active) {
+    const nav = active.closest(".top-nav");
+    if (!nav) return;
+    $("navIndicator").style.width = active.offsetWidth + "px";
+    $("navIndicator").style.transform = "translateX(" + (active.offsetLeft - 5) + "px)";
+  }
+  function showPage(name, scroll = true) {
+    const panel = document.querySelector('[data-page="' + name + '"]');
+    if (!panel) return;
+    state.page = name;
+    document.querySelectorAll(".page-panel").forEach((item) => {
+      item.hidden = item !== panel;
+      item.classList.toggle("active", item === panel);
+    });
+    const active = document.querySelector('.nav-item[data-page-target="' + name + '"]');
+    document.querySelectorAll(".nav-item").forEach((item) => {
+      item.classList.toggle("active", item === active);
+      if (item === active) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    });
+    if (active) requestAnimationFrame(() => positionNavIndicator(active));
+    if (scroll) window.scrollTo({top: 0, behavior: "smooth"});
   }
   function showTab(name, scroll = false) {
     const investigation = name === "investigation";
-    $("alertsView").hidden = investigation;
-    $("investigationView").hidden = !investigation;
-    $("tabAlerts").classList.toggle("active", !investigation);
-    $("tabInvestigation").classList.toggle("active", investigation);
-    $("tabAlerts").setAttribute("aria-selected", String(!investigation));
-    $("tabInvestigation").setAttribute("aria-selected", String(investigation));
-    if (scroll) $("workspace").scrollIntoView({behavior: "smooth"});
+    $("alertsView").hidden = false;
+    $("investigationView").hidden = false;
+    showPage(investigation ? "investigation" : "alerts", scroll);
   }
   async function loadOverview() {
     try {
@@ -77,16 +98,22 @@
       $("metricTransactions").textContent = number(summary.transactions);
       $("metricWallets").textContent = number(summary.wallets);
       $("metricAlerts").textContent = number(summary.alerts);
-      $("queueCount").textContent = number(summary.alerts);
+      $("queueCount").textContent = number(summary.alerts) + " alerts";
       $("metricPrAuc").textContent = number(model.test.pr_auc, 3);
       $("methodPrecision").textContent = percent(model.test.precision);
       $("methodRecall").textContent = percent(model.test.recall);
       $("geoSideStatus").textContent = geo.data_source === "synthetic_fixture"
         ? "SYNTHETIC CITY + ASN FIXTURES" : "LOCAL GEO SOURCE";
+      $("systemModel").textContent = "Ready · PR-AUC " + number(model.test.pr_auc, 3);
+      $("systemDataset").textContent = number(summary.transactions) + " transactions";
+      $("systemGeo").textContent = geo.data_source === "synthetic_fixture" ? "Synthetic fixture" : "Local GeoLite";
       connection(true);
     } catch (error) {
       connection(false);
       $("geoSideStatus").textContent = "BACKEND UNAVAILABLE";
+      $("systemModel").textContent = "Unavailable";
+      $("systemDataset").textContent = "Unavailable";
+      $("systemGeo").textContent = "Unavailable";
       $("lookupMessage").textContent = errorMessage(error, "Overview");
       $("lookupMessage").classList.add("error");
     }
@@ -131,9 +158,43 @@
     }).join("");
     $("alertList").innerHTML = rows || '<tr><td colspan="7" class="table-message">No alerts match. Change the filter or search.</td></tr>';
     $("queuePageLabel").textContent = number(state.alerts.length) + " alerts loaded · " +
-      $("sortAlerts").selectedOptions[0].textContent;
+      $("sortAlerts").selectedOptions[0].textContent.toLowerCase();
     $("loadMoreButton").disabled = !state.more;
-    if (state.alerts.length) $("previewProbability").textContent = percent(state.alerts[0].classification_probability);
+    const preview = state.alerts.slice(0, 5).map((alert) => {
+      const evidence = alert.patterns?.length ? alert.patterns[0].pattern.replaceAll("_", " ") :
+        (alert.graph_risk != null ? "graph-linked evidence" : "model probability");
+      return '<tr data-alert="' + escapeHtml(alert.alert_id) + '" tabindex="0"><td title="' +
+        escapeHtml(alert.wallet_id) + '">' + escapeHtml(shorten(alert.wallet_id, 17)) +
+        '</td><td class="score-high">' + number(alert.risk_score, 1) + '</td><td class="level">' +
+        escapeHtml(alert.risk_category) + '</td><td>' + escapeHtml(evidence) +
+        '</td><td class="open-cell">↗</td></tr>';
+    }).join("");
+    $("overviewAlertList").innerHTML = preview || '<tr><td colspan="5" class="table-message">No alerts available.</td></tr>';
+    renderAnalytics();
+  }
+  function renderAnalytics() {
+    const mode = state.analyticsMode;
+    const config = {
+      risk: {field: "risk_score", scale: 1, label: "Final risk score / 100", digits: 1},
+      anomaly: {field: "anomaly_score", scale: 100, label: "Normalized anomaly signal / 100", digits: 1},
+      graph: {field: "graph_risk", scale: 100, label: "Graph proximity signal / 100", digits: 1}
+    }[mode];
+    const points = state.alerts.slice(0, 10).map((alert, index) => ({
+      value: alert[config.field] == null ? null : Math.max(0, Math.min(100, Number(alert[config.field]) * config.scale)),
+      wallet: alert.wallet_id,
+      alert: alert.alert_id,
+      index: index + 1
+    }));
+    const available = points.filter((point) => point.value != null && Number.isFinite(point.value));
+    $("analyticsLegend").textContent = config.label;
+    $("analyticsValue").textContent = available.length ? number(available[0].value, config.digits) : "—";
+    $("analyticsCaption").textContent = available.length ? "Highest ranked entity" : "No saved values available";
+    $("analyticsChart").innerHTML = available.length ? available.map((point) =>
+      '<button class="chart-column" type="button" data-alert="' + escapeHtml(point.alert) +
+      '" aria-label="Open ' + escapeHtml(shorten(point.wallet, 9)) + ', value ' + number(point.value, 1) +
+      '"><i class="chart-bar" style="height:' + point.value + '%"></i><span>' +
+      String(point.index).padStart(2, "0") + '</span></button>').join("") :
+      '<div class="chart-empty">No ' + escapeHtml(mode) + ' values are available for these alerts.</div>';
   }
   function setLookupMessage(message, error = false) {
     $("lookupMessage").textContent = message;
@@ -214,6 +275,14 @@
     $("modelSignal").textContent = percent(wallet.classification_probability);
     $("anomalySignal").textContent = number(wallet.anomaly_score, 3);
     $("graphSignal").textContent = wallet.graph_risk == null ? "none saved" : number(wallet.graph_risk, 3);
+    $("patternSignal").textContent = number((evidence.patterns || []).length);
+    requestAnimationFrame(() => {
+      $("riskTrackFill").style.width = Math.max(0, Math.min(100, Number(wallet.risk_score) || 0)) + "%";
+      $("modelBar").style.width = Math.max(0, Math.min(100, (Number(wallet.classification_probability) || 0) * 100)) + "%";
+      $("anomalyBar").style.width = Math.max(0, Math.min(100, (Number(wallet.anomaly_score) || 0) * 100)) + "%";
+      $("graphBar").style.width = wallet.graph_risk == null ? "0%" : Math.max(0, Math.min(100, Number(wallet.graph_risk) * 100)) + "%";
+      $("patternBar").style.width = Math.min(100, (evidence.patterns || []).length * 20) + "%";
+    });
     renderShap(evidence.model_evidence || []);
     renderPatterns(evidence.patterns || []);
     renderGraph(graph, wallet.wallet_id);
@@ -276,15 +345,21 @@
       '<div><span>ANOMALY SCORE</span><strong>' + number(tx.anomaly_score, 3) + '</strong></div></div>';
   }
   function renderNetwork(tx) {
-    const rows = [
+    const networkRows = [
       ["Observed source IP", tx.src_ip || "Unavailable"],
-      ["Dataset country", tx.dataset_geo_country || "Unavailable"],
       ["ASN organization", tx.src_ip_geo_asn_org || "Unavailable"],
       ["Geo data source", tx.src_ip_geo_data_source || "Unavailable"]
     ];
+    const locationRows = [
+      ["Dataset country", tx.dataset_geo_country || "Unavailable"],
+      ["Estimated region", tx.src_ip_geo_region || "Unavailable"],
+      ["Estimated city", tx.src_ip_geo_city || "Unavailable"],
+      ["Accuracy radius", tx.src_ip_geo_accuracy_radius_km == null ? "Unavailable" : number(tx.src_ip_geo_accuracy_radius_km) + " km"]
+    ];
+    const rows = state.geoMode === "location" ? locationRows : networkRows;
     $("networkContext").innerHTML = rows.map((row) => '<div class="network-row"><span>' +
       escapeHtml(row[0]) + "</span><strong>" + escapeHtml(row[1]) + "</strong></div>").join("") +
-      '<p class="fine-print">An IP is a network observation, not an attribution to the spending address. City and ASN fixtures are synthetic.</p>';
+      '<p class="fine-print">IP geolocation is an estimate and is not an attribution to the spending address. City and ASN fixtures are synthetic.</p>';
   }
   async function openTransaction(txid, standalone = false, quiet = false) {
     const request = ++state.transactionRequest;
@@ -303,6 +378,7 @@
       if (request !== state.transactionRequest) return;
       const target = standalone ? $("standaloneTransactionContent") : $("transactionContent");
       target.innerHTML = transactionMarkup(tx);
+      state.currentTransaction = tx;
       if (!standalone) renderNetwork(tx);
       if (!quiet) target.scrollIntoView({behavior: "smooth", block: "nearest"});
       return tx;
@@ -334,7 +410,7 @@
     state.graphScale = 1; state.graphX = 0; state.graphY = 0;
     setGraphTransform();
     const defs = svgEl("defs"), marker = svgEl("marker", {id:"flowArrow",viewBox:"0 0 10 10",refX:9,refY:5,markerWidth:5,markerHeight:5,orient:"auto"});
-    marker.append(svgEl("path", {d:"M 0 0 L 10 5 L 0 10 z",fill:"#86ab70"})); defs.append(marker); svg.prepend(defs);
+    marker.append(svgEl("path", {d:"M 0 0 L 10 5 L 0 10 z",fill:"#80659b"})); defs.append(marker); svg.prepend(defs);
     const focus = "wallet:" + focusWallet;
     const focusEdges = (graph.edges || []).filter((edge) => edge.source === focus || edge.target === focus);
     const txids = [...new Set(focusEdges.map((edge) => edge.source.startsWith("tx:") ? edge.source : edge.target))].slice(0, 9);
@@ -368,22 +444,19 @@
     }
     $("graphMeta").textContent = number(graph.nodes?.length || 0) + " nodes · " + number(graph.edges?.length || 0) + " edges";
     $("graphSelection").textContent = "Select a node to inspect it.";
+    $("graphPrompt").hidden = true;
   }
   async function start() {
     $("apiUrl").value = state.api;
+    showPage(state.page, false);
     await loadOverview();
     await loadAlerts(true);
   }
   $("lookupForm").addEventListener("submit", (event) => {event.preventDefault();lookup($("lookupInput").value);});
   $("featuredButton").addEventListener("click", () => openAlert("alert_00335"));
-  $("tabAlerts").addEventListener("click", () => showTab("alerts"));
-  $("tabInvestigation").addEventListener("click", () => showTab("investigation"));
-  document.querySelector(".workspace-tabs").addEventListener("keydown", (event) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    const next = event.target === $("tabAlerts") ? $("tabInvestigation") : $("tabAlerts");
-    next.focus();
-    next.click();
+  document.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-page-target]");
+    if (target) showPage(target.dataset.pageTarget);
   });
   $("alertList").addEventListener("click", (event) => {
     const row = event.target.closest("[data-alert]");
@@ -394,6 +467,27 @@
       const row = event.target.closest("[data-alert]");
       if (row) {event.preventDefault();openAlert(row.dataset.alert);}
     }
+  });
+  $("overviewAlertList").addEventListener("click", (event) => {
+    const row = event.target.closest("[data-alert]");
+    if (row) openAlert(row.dataset.alert);
+  });
+  $("overviewAlertList").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      const row = event.target.closest("[data-alert]");
+      if (row) {event.preventDefault();openAlert(row.dataset.alert);}
+    }
+  });
+  $("analyticsMode").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-mode]");
+    if (!button) return;
+    state.analyticsMode = button.dataset.mode;
+    $("analyticsMode").querySelectorAll("button").forEach((item) => item.classList.toggle("active", item === button));
+    renderAnalytics();
+  });
+  $("analyticsChart").addEventListener("click", (event) => {
+    const bar = event.target.closest("[data-alert]");
+    if (bar) openAlert(bar.dataset.alert);
   });
   document.querySelector(".filter-row").addEventListener("click", (event) => {
     const button = event.target.closest("[data-filter]");
@@ -462,24 +556,39 @@
     catch (_) {toast("Clipboard unavailable");}
   });
   $("settingsButton").addEventListener("click", () => $("settingsDialog").showModal());
+  $("settingsOpenButton").addEventListener("click", () => $("settingsDialog").showModal());
+  $("systemButton").addEventListener("click", () => {
+    const open = $("systemMenu").hidden;
+    $("systemMenu").hidden = !open;
+    $("systemButton").setAttribute("aria-expanded", String(open));
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".system-wrap")) {
+      $("systemMenu").hidden = true;
+      $("systemButton").setAttribute("aria-expanded", "false");
+    }
+  });
+  $("geoNetworkToggle").addEventListener("click", () => {
+    state.geoMode = "network";
+    $("geoNetworkToggle").classList.add("active");
+    $("geoLocationToggle").classList.remove("active");
+    if (state.currentTransaction) renderNetwork(state.currentTransaction);
+  });
+  $("geoLocationToggle").addEventListener("click", () => {
+    state.geoMode = "location";
+    $("geoLocationToggle").classList.add("active");
+    $("geoNetworkToggle").classList.remove("active");
+    if (state.currentTransaction) renderNetwork(state.currentTransaction);
+  });
   $("saveApi").addEventListener("click", () => {
     const value = $("apiUrl").value.trim().replace(/\/+$/, "");
     if (!/^https?:\/\//i.test(value)) {toast("Enter an http(s) URL");return;}
     state.api=value;localStorage.setItem("tracepoint-api",value);
     $("settingsDialog").close();start();
   });
-  const hero = document.querySelector(".hero");
-  let pointerFrame = 0;
-  hero.addEventListener("pointermove", (event) => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    if (pointerFrame) cancelAnimationFrame(pointerFrame);
-    const x = event.clientX, y = event.clientY;
-    pointerFrame = requestAnimationFrame(() => {
-      const box = hero.getBoundingClientRect();
-      hero.style.setProperty("--pointer-x", (100 * (x - box.left) / box.width).toFixed(1) + "%");
-      hero.style.setProperty("--pointer-y", (100 * (y - box.top) / box.height).toFixed(1) + "%");
-      pointerFrame = 0;
-    });
+  window.addEventListener("resize", () => {
+    const active = document.querySelector(".nav-item.active");
+    if (active) positionNavIndicator(active);
   });
   start();
 })();

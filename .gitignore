@@ -12,3 +12,5 @@ frontend/.browser-results/
 frontend/qa-*.png
 __pycache__/
 .pytest_cache/
+env
+.env
